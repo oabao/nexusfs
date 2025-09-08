@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexusFS - Admin Console</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <style>
+        /* Basic CSS Reset & Styling */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f4f6f9; color: #333; display: flex; height: 100vh; }
+        #app { display: flex; width: 100%; }
+        .sidebar { width: 220px; background-color: #1e2a38; color: #fff; padding: 20px; flex-shrink: 0; }
+        .sidebar h1 { font-size: 1.5rem; margin: 0 0 30px 0; text-align: center; }
+        .sidebar ul { list-style: none; padding: 0; margin: 0; }
+        .sidebar li { padding: 15px 10px; cursor: pointer; border-radius: 5px; transition: background-color 0.2s; }
+        .sidebar li.active, .sidebar li:hover { background-color: #4a5a6a; }
+        .main-content { flex-grow: 1; padding: 30px; overflow-y: auto; }
+        .page-header { font-size: 2rem; font-weight: bold; color: #1e2a38; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #ddd; }
+        .card { background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+        .card-header { font-size: 1.2rem; font-weight: 600; margin-bottom: 15px; }
+        .capacity-bar-container { background-color: #e9ecef; border-radius: 5px; height: 20px; overflow: hidden; margin-bottom: 10px; }
+        .capacity-bar { background-color: #007bff; height: 100%; transition: width 0.5s ease-in-out; }
+        .capacity-info { display: flex; justify-content: space-between; font-size: 0.9rem; color: #666; }
+        .status-list { list-style: none; padding: 0; margin: 0; }
+        .status-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+        .status-list li:last-child { border-bottom: none; }
+        .status-indicator { padding: 3px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; color: #fff; }
+        .status-indicator.healthy { background-color: #28a745; }
+        .status-indicator.degraded { background-color: #ffc107; }
+        .status-indicator.unhealthy { background-color: #dc3545; }
+
+        /* Buckets Page Styling */
+        .buckets-container { display: flex; gap: 20px; align-items: flex-start; }
+        .bucket-list { flex: 0 0 300px; }
+        .bucket-list ul { list-style: none; padding: 0; margin: 0; }
+        .bucket-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; cursor: pointer; border-radius: 5px; border: 1px solid #eee; margin-bottom: 5px; transition: all 0.2s; }
+        .bucket-list li:hover, .bucket-list li.active { background-color: #e9f5ff; border-color: #007bff; }
+        .bucket-policy { font-size: 0.8rem; color: #666; background-color: #eee; padding: 2px 6px; border-radius: 4px; }
+        .object-list { flex-grow: 1; }
+        .object-list table { width: 100%; border-collapse: collapse; }
+        .object-list th, .object-list td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }
+        .object-list th { background-color: #f8f9fa; font-weight: 600; }
+        .object-list tbody tr:hover { background-color: #f8f9fa; }
+        .empty-state { text-align: center; padding: 40px; color: #888; }
+
+        /* Configuration Page Styling */
+        .config-container .card { margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: 600; margin-bottom: 5px; }
+        .form-group input[type="text"], .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background-color: #f0f0f0; cursor: not-allowed; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="sidebar">
+            <h1>NexusFS</h1>
+            <ul>
+                <li @click="activePage = 'dashboard'" :class="{ active: activePage === 'dashboard' }">Dashboard</li>
+                <li @click="activePage = 'performance'" :class="{ active: activePage === 'performance' }">Performance</li>
+                <li @click="activePage = 'buckets'" :class="{ active: activePage === 'buckets' }">Buckets</li>
+                <li @click="activePage = 'configuration'" :class="{ active: activePage === 'configuration' }">Configuration</li>
+            </ul>
+        </div>
+        <div class="main-content">
+            <!-- Dashboard Page -->
+            <div v-if="activePage === 'dashboard'">
+                <h2 class="page-header">Dashboard</h2>
+                <div class="card"><div class="card-header">Storage Capacity</div><div class="capacity-bar-container"><div class="capacity-bar" :style="{ width: dashboardData.usedPercentage + '%' }"></div></div><div class="capacity-info"><span>Used: {{ dashboardData.usedCapacity }} TB</span><span>Free: {{ dashboardData.freeCapacity.toFixed(2) }} TB</span><span>Total: {{ dashboardData.totalCapacity }} TB</span></div></div>
+                <div class="card"><div class="card-header">System Status</div><ul class="status-list"><li v-for="system in systemStatus" :key="system.name"><span>{{ system.name }} ({{ system.count }})</span><span class="status-indicator" :class="system.status.toLowerCase()">{{ system.status }}</span></li></ul></div>
+                <div class="card"><div class="card-header">Data Healing</div><p><strong>Status:</strong> {{ healingStatus.status }}</p><p><strong>Last Scrub:</strong> {{ healingStatus.lastScrub }}</p><p><strong>Errors Found:</strong> {{ healingStatus.errorsFound }}</p></div>
+            </div>
+
+            <!-- Performance Page -->
+            <div v-if="activePage === 'performance'">
+                <h2 class="page-header">Performance Metrics</h2>
+                <div class="card"><div class="card-header">S3 Requests (ops/sec)</div><div id="s3RequestsChart"></div></div>
+                <div class="card"><div class="card-header">Gateway Latency (ms, 99th percentile)</div><div id="latencyChart"></div></div>
+                <div class="card"><div class="card-header">Storage Throughput (MB/s)</div><div id="throughputChart"></div></div>
+            </div>
+
+            <!-- Buckets Page -->
+            <div v-if="activePage === 'buckets'">
+                <h2 class="page-header">Buckets & Objects</h2>
+                <div class="buckets-container">
+                    <div class="card bucket-list">
+                        <div class="card-header">Buckets</div>
+                        <ul><li v-for="bucket in buckets" :key="bucket.name" @click="selectedBucket = bucket" :class="{ active: selectedBucket === bucket }">{{ bucket.name }}<span class="bucket-policy">{{ bucket.storagePolicy }}</span></li></ul>
+                    </div>
+                    <div class="card object-list">
+                        <div class="card-header" v-if="selectedBucket">Objects in <strong>{{ selectedBucket.name }}</strong></div>
+                        <div class="card-header" v-else>Select a bucket</div>
+                        <div v-if="selectedBucket">
+                            <table><thead><tr><th>Name</th><th>Size</th><th>Last Modified</th></tr></thead><tbody><tr v-for="object in selectedBucket.objects" :key="object.name"><td>{{ object.name }}</td><td>{{ object.size }}</td><td>{{ object.lastModified }}</td></tr></tbody></table>
+                        </div>
+                        <div v-else class="empty-state"><p>Please select a bucket from the list on the left to view its objects.</p></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuration Page -->
+            <div v-if="activePage === 'configuration'">
+                <h2 class="page-header">System Configuration</h2>
+                <div class="config-container">
+                    <div class="card"><div class="card-header">Gateway Settings</div><div class="form-group"><label for="gatewayAddr">Listen Address</label><input type="text" id="gatewayAddr" :value="configuration.gateway.address" disabled></div><div class="form-group"><label for="authProvider">OIDC Provider URL</label><input type="text" id="authProvider" :value="configuration.gateway.authProvider" disabled></div></div>
+                    <div class="card"><div class="card-header">Storage Settings</div><div class="form-group"><label for="storagePolicy">Default Erasure Policy</label><select id="storagePolicy" disabled><option :selected="configuration.storage.defaultErasurePolicy === 'EC 4+2'">EC 4+2</option><option :selected="configuration.storage.defaultErasurePolicy === 'EC 6+3'">EC 6+3</option></select></div></div>
+                    <div class="card"><div class="card-header">Logging</div><div class="form-group"><label for="logLevel">Log Level</label><select id="logLevel" disabled><option :selected="configuration.log.level === 'info'">Info</option><option :selected="configuration.log.level === 'debug'">Debug</option><option :selected="configuration.log.level === 'warn'">Warning</option><option :selected="configuration.log.level === 'error'">Error</option></select></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, nextTick } = Vue;
+        createApp({
+            data() {
+                return {
+                    activePage: 'dashboard',
+                    dashboardData: { totalCapacity: 100, usedCapacity: 45.5, get freeCapacity() { return this.totalCapacity - this.usedCapacity; }, get usedPercentage() { return (this.usedCapacity / this.totalCapacity) * 100; } },
+                    systemStatus: [ { name: 'Gateway Nodes', status: 'Healthy', count: 3 }, { name: 'Storage Nodes', status: 'Healthy', count: 12 }, { name: 'Metadata DB', status: 'Healthy', count: 1 }, { name: 'Cluster Operator', status: 'Healthy', count: 1 } ],
+                    healingStatus: { lastScrub: '2 hours ago', errorsFound: 0, status: 'Idle' },
+                    performanceData: { s3RequestsChart: null, latencyChart: null, throughputChart: null, chartUpdateInterval: null },
+                    buckets: [ { name: 'customer-invoices', createdAt: '2023-01-15', storagePolicy: 'EC 4+2', objects: [ { name: 'invoice-2023-01.pdf', size: '1.2 MB', lastModified: '2023-01-15 10:30' }, { name: 'invoice-2023-02.pdf', size: '1.4 MB', lastModified: '2023-02-15 11:00' }, ] }, { name: 'archived-logs', createdAt: '2023-03-20', storagePolicy: 'EC 6+3', objects: [ { name: 'gateway-2023-03-20.log.gz', size: '55.8 MB', lastModified: '2023-03-20 18:00' }, { name: 'storage-node-1-2023-03-20.log.gz', size: '78.2 MB', lastModified: '2023-03-20 18:00' }, ] }, { name: 'ml-training-data', createdAt: '2023-05-10', storagePolicy: 'EC 4+2', objects: [ { name: 'dataset-images.zip', size: '15.6 GB', lastModified: '2023-05-10 14:00' }, { name: 'model-checkpoint.bin', size: '2.1 GB', lastModified: '2023-05-11 09:00' }, ] } ],
+                    selectedBucket: null,
+                    configuration: { gateway: { address: '0.0.0.0:8080', authProvider: 'https://keycloak.example.com/auth/realms/nexusfs' }, storage: { defaultErasurePolicy: 'EC 4+2' }, metadata: { connectionString: 'postgresql://user:password@postgres.nexus.internal:5432/nexusdb' }, log: { level: 'info' } }
+                };
+            },
+            watch: {
+                activePage(newPage, oldPage) {
+                    if (newPage === 'performance') {
+                        nextTick(() => {
+                            if (!this.performanceData.s3RequestsChart) { this.initPerformanceCharts(); }
+                            if(this.performanceData.chartUpdateInterval) clearInterval(this.performanceData.chartUpdateInterval);
+                            this.performanceData.chartUpdateInterval = setInterval(this.updatePerformanceCharts, 2000);
+                        });
+                    } else if (oldPage === 'performance') {
+                        if (this.performanceData.chartUpdateInterval) { clearInterval(this.performanceData.chartUpdateInterval); this.performanceData.chartUpdateInterval = null; }
+                    }
+                }
+            },
+            methods: {
+                initPerformanceCharts() {
+                    const chartOptions = (title) => ({ chart: { type: 'line', height: 250, animations: { easing: 'linear', dynamicAnimation: { enabled: true, speed: 1000 } }, toolbar: { show: false }, zoom: { enabled: false } }, xaxis: { type: 'datetime', range: 60000 }, yaxis: { labels: { formatter: (val) => val.toFixed(0) }, title: { text: title } }, stroke: { curve: 'smooth', width: 2 }, dataLabels: { enabled: false }, markers: { size: 0 } });
+                    this.performanceData.s3RequestsChart = new ApexCharts(document.querySelector("#s3RequestsChart"), { ...chartOptions('ops/sec'), series: [{ name: 'ops/sec', data: [] }] });
+                    this.performanceData.latencyChart = new ApexCharts(document.querySelector("#latencyChart"), { ...chartOptions('ms'), series: [{ name: 'ms', data: [] }] });
+                    this.performanceData.throughputChart = new ApexCharts(document.querySelector("#throughputChart"), { ...chartOptions('MB/s'), series: [{ name: 'Read MB/s', data: [] }, { name: 'Write MB/s', data: [] }] });
+                    this.performanceData.s3RequestsChart.render(); this.performanceData.latencyChart.render(); this.performanceData.throughputChart.render();
+                },
+                updatePerformanceCharts() {
+                    const now = new Date().getTime();
+                    this.performanceData.s3RequestsChart.appendData([{ data: [[now, Math.floor(Math.random() * 200) + 50]] }]);
+                    this.performanceData.latencyChart.appendData([{ data: [[now, Math.floor(Math.random() * 50) + 10]] }]);
+                    this.performanceData.throughputChart.appendData([ { data: [[now, parseFloat((Math.random() * 300 + 100).toFixed(2))]] }, { data: [[now, parseFloat((Math.random() * 250 + 80).toFixed(2))]] } ]);
+                }
+            },
+            mounted() {
+                console.log("Vue App Mounted.");
+                if (this.activePage === 'performance') { this.initPerformanceCharts(); this.performanceData.chartUpdateInterval = setInterval(this.updatePerformanceCharts, 2000); }
+                if (this.buckets.length > 0) { this.selectedBucket = this.buckets[0]; }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
