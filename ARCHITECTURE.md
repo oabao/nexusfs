@@ -25,32 +25,35 @@ The NexusFS architecture is composed of several key systems that work in concert
 This diagram illustrates the high-level containers (applications/services) within the NexusFS ecosystem and their primary interactions.
 
 ```mermaid
-C4Container
-    title Container Diagram for NexusFS
+graph TD
+    subgraph "External Systems"
+        user["User/Application<br>(S3 Client)"]
+        oidc["OpenID Connect Provider<br>(e.g., Keycloak, Okta)"]
+    end
 
-    !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+    subgraph "Kubernetes Cluster"
+        subgraph "NexusFS"
+            gateway["Nexus-Gateway<br>(Go, net/http)<br>Stateless S3 API endpoint"]
+            storage["Nexus-Storage<br>(Go, gRPC)<br>Stateful data node"]
+            metadata["Metadata Engine<br>(PostgreSQL)<br>Stores object metadata"]
+            operator["Nexus-Operator<br>(Go, Operator SDK)<br>Manages cluster lifecycle"]
+        end
+    end
 
-    Person(user, "User/Application", "S3 Client (SDK, CLI)")
-    System_Ext(oidc, "OpenID Connect Provider", "e.g., Keycloak, Okta")
+    user -- "Makes S3 API requests (HTTPS)" --> gateway
+    gateway -- "Validates JWT tokens (HTTPS)" --> oidc
+    gateway -- "Reads/Writes object metadata (SQL)" --> metadata
+    gateway -- "Writes/Reads data shards (gRPC)" --> storage
 
-    System_Boundary(k8s, "Kubernetes Cluster") {
-        Container(gateway, "Nexus-Gateway", "Go, net/http", "Stateless S3 API endpoint. Handles auth, encoding, and routing.")
-        Container(storage, "Nexus-Storage", "Go, gRPC", "Stateful data node. Manages physical storage of data shards.")
-        ContainerDb(metadata, "Metadata Engine", "PostgreSQL", "Stores object metadata, shard locations, and cluster configuration.")
-        Container(operator, "Nexus-Operator", "Go, Operator SDK", "Manages the lifecycle of NexusFS clusters (deploy, scale, heal).")
+    operator -- "Manages/Scales" --> gateway
+    operator -- "Manages/Scales" --> storage
+    operator -- "Manages/Scales" --> metadata
 
-        Rel(user, gateway, "Makes S3 API requests", "HTTPS")
-        Rel(gateway, oidc, "Validates JWT tokens", "HTTPS")
-        Rel(gateway, metadata, "Reads/Writes object metadata", "SQL")
-        Rel_Right(gateway, storage, "Writes/Reads data shards", "gRPC")
+    storage -- "Replicates/Heals data" --> storage
+    storage -- "Updates shard health status" --> metadata
 
-        Rel(operator, gateway, "Manages/Scales")
-        Rel(operator, storage, "Manages/Scales")
-        Rel(operator, metadata, "Manages/Configures")
-
-        Rel(storage, storage, "Replicates/Heals data")
-        Rel(storage, metadata, "Updates shard health status")
-    }
+    style user fill:#08427b,stroke:#fff,color:#fff
+    style oidc fill:#999,stroke:#fff,color:#fff
 ```
 
 ### 2.2. Component Diagram - Nexus-Gateway
@@ -58,31 +61,35 @@ C4Container
 The Gateway is stateless and responsible for handling all incoming S3 traffic.
 
 ```mermaid
-C4Component
-    title Component Diagram for Nexus-Gateway
+graph TD
+    subgraph "Nexus-Gateway"
+        A[S3 API Handler]
+        B[Auth Module]
+        C[Request Router]
+        D[Erasure Coding Module]
+        E[gRPC Client]
+        F[OpenTelemetry Exporter]
+    end
 
-    Container(gateway, "Nexus-Gateway", "Go") {
-        Component(api, "S3 API Handler", "net/http", "Parses and validates S3 requests.")
-        Component(auth, "Auth Module", "OpenID Connect", "Authenticates requests against an external OIDC provider.")
-        Component(router, "Request Router", "Consistent Hashing", "Determines which Erasure Set an object belongs to.")
-        Component(ec, "Erasure Coding Module", "Klauspost/galactus", "Encodes object data into shards for writes; decodes for reads.")
-        Component(grpc_client, "gRPC Client", "gRPC", "Communicates with Nexus-Storage nodes for shard I/O.")
-        Component(tracer, "OpenTelemetry Exporter", "OTel SDK", "Emits traces and metrics.")
+    A --> B
+    A --> C
+    C --> D
+    D --> E
+    A --> F
 
-        Rel(api, auth, "Uses")
-        Rel(api, router, "Uses")
-        Rel(router, ec, "Uses")
-        Rel(ec, grpc_client, "Uses")
-        Rel(api, tracer, "Records")
-    }
+    subgraph "External"
+        UserApp["User/Application"]
+        StorageNodes["Nexus-Storage Nodes"]
+        MetadataDB["Metadata Engine"]
+    end
 
-    System_Ext(user, "User/Application")
-    System_Ext(storage_nodes, "Nexus-Storage Nodes")
-    System_Ext(metadata_db, "Metadata Engine")
+    UserApp -- "Sends S3 Requests" --> A
+    E -- "Writes/Reads shards" --> StorageNodes
+    C -- "Reads storage layout" --> MetadataDB
 
-    Rel(user, api, "Sends S3 Requests")
-    Rel(grpc_client, storage_nodes, "Writes/Reads shards")
-    Rel(router, metadata_db, "Reads storage layout")
+    style UserApp fill:#999,stroke:#fff,color:#fff
+    style StorageNodes fill:#999,stroke:#fff,color:#fff
+    style MetadataDB fill:#999,stroke:#fff,color:#fff
 ```
 
 ### 2.3. Component Diagram - Nexus-Storage
@@ -90,27 +97,30 @@ C4Component
 The Storage node is stateful and manages the low-level details of storing data blocks.
 
 ```mermaid
-C4Component
-    title Component Diagram for Nexus-Storage
+graph TD
+    subgraph "Nexus-Storage"
+        A[gRPC Server]
+        B[BlockStore Manager]
+        C[Disk I/O Handler]
+        D[Data Healer]
+        E[Prometheus Exporter]
+    end
 
-    Container(storage, "Nexus-Storage", "Go") {
-        Component(grpc_server, "gRPC Server", "gRPC", "Receives commands from Gateway (WRITE_SHARD, READ_SHARD).")
-        Component(block_store, "BlockStore Manager", "Go", "Manages blocks on underlying storage.")
-        Component(disk_io, "Disk I/O Handler", "Go", "Performs filesystem operations (read/write/delete).")
-        Component(healer, "Data Healer", "Go", "Scans for bit rot and participates in data repair operations.")
-        Component(metrics, "Prometheus Exporter", "OpenTelemetry", "Exposes detailed metrics (disk usage, I/O latency).")
+    A --> B
+    B --> C
+    D --> B
+    A --> E
 
-        Rel(grpc_server, block_store, "Uses")
-        Rel(block_store, disk_io, "Uses")
-        Rel(healer, block_store, "Uses")
-        Rel(grpc_server, metrics, "Records")
-    }
+    subgraph "External"
+        GatewayNodes["Nexus-Gateway Nodes"]
+        LocalFS["Local Filesystem / NAS"]
+    end
 
-    System_Ext(gateway_nodes, "Nexus-Gateway Nodes")
-    System_Ext(local_fs, "Local Filesystem / NAS")
+    GatewayNodes -- "Sends commands" --> A
+    C -- "Reads/Writes data" --> LocalFS
 
-    Rel(gateway_nodes, grpc_server, "Sends commands")
-    Rel(disk_io, local_fs, "Reads/Writes data")
+    style GatewayNodes fill:#999,stroke:#fff,color:#fff
+    style LocalFS fill:#999,stroke:#fff,color:#fff
 ```
 
 ---
