@@ -43,6 +43,14 @@ func main() {
 
 	r := mux.NewRouter()
 
+	// Register Admin API handlers
+	r.HandleFunc("/admin/dashboard", gateway.AdminDashboardHandler).Methods("GET")
+
+	// Serve the admin console
+	r.HandleFunc("/console", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "console.html")
+	})
+
 	// Register S3 API handlers
 	r.HandleFunc("/", s3Api.ListBucketsHandler).Methods("GET")
 	r.HandleFunc("/{bucket}", s3Api.CreateBucketHandler).Methods("PUT")
@@ -51,8 +59,8 @@ func main() {
 	r.HandleFunc("/{bucket}/{object:.+}", s3Api.GetObjectHandler).Methods("GET")
 	r.HandleFunc("/{bucket}/{object:.+}", s3Api.DeleteObjectHandler).Methods("DELETE")
 
-	log.Println("Starting NexusFS Gateway on :9000")
-	if err := http.ListenAndServe(":9000", r); err != nil {
+	log.Println("Starting NexusFS Gateway on :9001")
+	if err := http.ListenAndServe(":9001", r); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
