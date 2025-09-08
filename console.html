@@ -116,13 +116,13 @@
             data() {
                 return {
                     activePage: 'dashboard',
-                    dashboardData: { totalCapacity: 100, usedCapacity: 45.5, get freeCapacity() { return this.totalCapacity - this.usedCapacity; }, get usedPercentage() { return (this.usedCapacity / this.totalCapacity) * 100; } },
-                    systemStatus: [ { name: 'Gateway Nodes', status: 'Healthy', count: 3 }, { name: 'Storage Nodes', status: 'Healthy', count: 12 }, { name: 'Metadata DB', status: 'Healthy', count: 1 }, { name: 'Cluster Operator', status: 'Healthy', count: 1 } ],
-                    healingStatus: { lastScrub: '2 hours ago', errorsFound: 0, status: 'Idle' },
+                    dashboardData: { totalCapacity: 0, usedCapacity: 0, get freeCapacity() { return this.totalCapacity - this.usedCapacity; }, get usedPercentage() { return (this.totalCapacity > 0) ? (this.usedCapacity / this.totalCapacity) * 100 : 0; } },
+                    systemStatus: [],
+                    healingStatus: { lastScrub: 'N/A', errorsFound: 0, status: 'Unknown' },
                     performanceData: { s3RequestsChart: null, latencyChart: null, throughputChart: null, chartUpdateInterval: null },
-                    buckets: [ { name: 'customer-invoices', createdAt: '2023-01-15', storagePolicy: 'EC 4+2', objects: [ { name: 'invoice-2023-01.pdf', size: '1.2 MB', lastModified: '2023-01-15 10:30' }, { name: 'invoice-2023-02.pdf', size: '1.4 MB', lastModified: '2023-02-15 11:00' }, ] }, { name: 'archived-logs', createdAt: '2023-03-20', storagePolicy: 'EC 6+3', objects: [ { name: 'gateway-2023-03-20.log.gz', size: '55.8 MB', lastModified: '2023-03-20 18:00' }, { name: 'storage-node-1-2023-03-20.log.gz', size: '78.2 MB', lastModified: '2023-03-20 18:00' }, ] }, { name: 'ml-training-data', createdAt: '2023-05-10', storagePolicy: 'EC 4+2', objects: [ { name: 'dataset-images.zip', size: '15.6 GB', lastModified: '2023-05-10 14:00' }, { name: 'model-checkpoint.bin', size: '2.1 GB', lastModified: '2023-05-11 09:00' }, ] } ],
+                    buckets: [],
                     selectedBucket: null,
-                    configuration: { gateway: { address: '0.0.0.0:8080', authProvider: 'https://keycloak.example.com/auth/realms/nexusfs' }, storage: { defaultErasurePolicy: 'EC 4+2' }, metadata: { connectionString: 'postgresql://user:password@postgres.nexus.internal:5432/nexusdb' }, log: { level: 'info' } }
+                    configuration: { gateway: { address: '', authProvider: '' }, storage: { defaultErasurePolicy: '' }, log: { level: '' } }
                 };
             },
             watch: {
@@ -139,6 +139,24 @@
                 }
             },
             methods: {
+                fetchDashboardData() {
+                    fetch('/admin/dashboard')
+                        .then(response => response.json())
+                        .then(data => {
+                            this.dashboardData.totalCapacity = data.dashboardData.totalCapacity;
+                            this.dashboardData.usedCapacity = data.dashboardData.usedCapacity;
+                            this.systemStatus = data.systemStatus;
+                            this.healingStatus = data.healingStatus;
+                            this.buckets = data.buckets;
+                            this.configuration = data.configuration;
+                            if (this.buckets.length > 0) {
+                                this.selectedBucket = this.buckets[0];
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching dashboard data:', error);
+                        });
+                },
                 initPerformanceCharts() {
                     const chartOptions = (title) => ({ chart: { type: 'line', height: 250, animations: { easing: 'linear', dynamicAnimation: { enabled: true, speed: 1000 } }, toolbar: { show: false }, zoom: { enabled: false } }, xaxis: { type: 'datetime', range: 60000 }, yaxis: { labels: { formatter: (val) => val.toFixed(0) }, title: { text: title } }, stroke: { curve: 'smooth', width: 2 }, dataLabels: { enabled: false }, markers: { size: 0 } });
                     this.performanceData.s3RequestsChart = new ApexCharts(document.querySelector("#s3RequestsChart"), { ...chartOptions('ops/sec'), series: [{ name: 'ops/sec', data: [] }] });
@@ -155,8 +173,8 @@
             },
             mounted() {
                 console.log("Vue App Mounted.");
+                this.fetchDashboardData();
                 if (this.activePage === 'performance') { this.initPerformanceCharts(); this.performanceData.chartUpdateInterval = setInterval(this.updatePerformanceCharts, 2000); }
-                if (this.buckets.length > 0) { this.selectedBucket = this.buckets[0]; }
             }
         }).mount('#app');
     </script>
