@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package nexus.v1;
+
+option go_package = "nexusfs/api/proto/nexus/v1";
+
+// StorageService is implemented by Nexus-Storage nodes.
+// It handles low-level shard operations.
+service StorageService {
+  // WriteShard writes a single data or parity shard to a storage node.
+  rpc WriteShard(WriteShardRequest) returns (WriteShardResponse);
+
+  // ReadShard reads a single data or parity shard from a storage node.
+  rpc ReadShard(ReadShardRequest) returns (ReadShardResponse);
+}
+
+message WriteShardRequest {
+  string shard_id = 1;
+  bytes data = 2;
+}
+
+message WriteShardResponse {
+  bool success = 1;
+}
+
+message ReadShardRequest {
+  string shard_id = 1;
+}
+
+message ReadShardResponse {
+  bytes data = 1;
+}

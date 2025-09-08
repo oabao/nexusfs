@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nexusfs
+description: A Helm chart for deploying the NexusFS object storage system.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
