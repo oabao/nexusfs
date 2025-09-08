@@ -31,3 +31,35 @@ func (s *Store) WriteObjectMetadata(ctx context.Context, obj *metadata.Object) e
 	// TODO: Implement PostgreSQL transaction logic to write object metadata.
 	return nil // placeholder
 }
+
+// CreateBucket implements the MetadataReadWriter interface.
+func (s *Store) CreateBucket(ctx context.Context, bucket metadata.Bucket) error {
+	// TODO: Implement SQL INSERT to create a bucket.
+	return nil // placeholder
+}
+
+// GetBucket implements the MetadataReadWriter interface.
+func (s *Store) GetBucket(ctx context.Context, name string) (*metadata.Bucket, error) {
+	// TODO: Implement SQL SELECT to get a single bucket by name.
+	return nil, nil // placeholder
+}
+
+// ListBuckets implements the MetadataReadWriter interface.
+func (s *Store) ListBuckets(ctx context.Context) ([]metadata.Bucket, error) {
+	// TODO: Implement SQL SELECT to list all buckets.
+	return nil, nil // placeholder
+}
+
+// ListObjects implements the MetadataReadWriter interface.
+func (s *Store) ListObjects(ctx context.Context, bucketName string) ([]metadata.Object, error) {
+	// TODO: Implement SQL SELECT to list objects in a bucket.
+	// This should support pagination (marker, max-keys) and prefixes in a real implementation.
+	return nil, nil // placeholder
+}
+
+// DeleteObjectMetadata implements the MetadataReadWriter interface.
+func (s *Store) DeleteObjectMetadata(ctx context.Context, bucketName, objectName string) error {
+	// TODO: Implement SQL DELETE to remove an object's metadata.
+	// In a real system, this might just set a "deleted" flag for GC.
+	return nil // placeholder
+}
